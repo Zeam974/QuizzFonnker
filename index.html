@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -533,6 +534,56 @@
   }
   .nav-buttons .btn { flex: 1; }
 
+  /* ========== QUESTIONS OUVERTES ========== */
+  .question-ouverte textarea {
+    width: 100%;
+    max-width: 480px;
+    background: rgba(253,246,236,0.06);
+    border: 1px solid rgba(224,123,57,0.3);
+    border-radius: 14px;
+    padding: 1.1rem 1.3rem;
+    color: var(--creme);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    outline: none;
+    resize: none;
+    min-height: 120px;
+    transition: border-color 0.2s;
+  }
+  .question-ouverte textarea:focus {
+    border-color: var(--orange);
+    background: rgba(253,246,236,0.09);
+  }
+  .question-ouverte textarea::placeholder { color: var(--gris); font-style: italic; }
+  .char-count {
+    font-size: 0.72rem;
+    color: var(--gris);
+    text-align: right;
+    margin-top: 0.4rem;
+    max-width: 480px;
+  }
+
+  /* Réponses libres dans dashboard */
+  .jeune-verbatim {
+    font-size: 0.82rem;
+    color: var(--creme-dark);
+    font-style: italic;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(224,123,57,0.1);
+    line-height: 1.5;
+  }
+  .verbatim-label {
+    font-size: 0.7rem;
+    color: var(--orange);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-style: normal;
+    display: block;
+    margin-bottom: 0.2rem;
+  }
+
   /* Password dash */
   .pwd-wrap { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
   .pwd-wrap input {
@@ -751,7 +802,27 @@ const QUESTIONS = [
   }
 ];
 
-const PROFILS = {
+// ========== QUESTIONS OUVERTES ==========
+const QUESTIONS_OUVERTES = [
+  {
+    id: "moi_avant",
+    texte: "Que dirais-tu à ton moi d'avant l'atelier Fonnkèr ?",
+    placeholder: "Écris-lui ce que tu voudrais qu'il sache...",
+    emoji: "💌"
+  },
+  {
+    id: "ne_pas_oublier",
+    texte: "En quelques mots ou une phrase, qu'est-ce que tu ne veux surtout pas oublier ?",
+    placeholder: "Ce qui doit rester gravé...",
+    emoji: "🌿"
+  },
+  {
+    id: "plus_transforme",
+    texte: "Dynamique de groupe, cadre bienveillant, jeux d'écriture, mise en voix... qu'est-ce qui t'a le plus transformé dans cet atelier ?",
+    placeholder: "Ce qui a vraiment changé quelque chose pour toi...",
+    emoji: "⚡"
+  }
+]; = {
   eveille: {
     emoji: "🌿",
     nom: "L'Éveillé·e",
@@ -785,6 +856,9 @@ const PROFILS = {
 // ========== STATE ==========
 let currentQ = 0;
 let reponses = [];
+let reponsesOuvertes = {};
+let modeOuvert = false;
+let currentQO = 0;
 let prenom = "";
 let age = "";
 let resultatsFirebase = [];
@@ -811,6 +885,11 @@ function demarrer() {
   if (!age) { document.getElementById('input-age').focus(); return; }
   currentQ = 0;
   reponses = [];
+  reponsesOuvertes = {};
+  modeOuvert = false;
+  currentQO = 0;
+  _profilCalcule = null;
+  _scoresCalcules = null;
   afficherQuestion();
   showScreen('screen-question');
 }
@@ -903,31 +982,126 @@ function selectionner(index) {
 }
 
 function suivant() {
+  if (modeOuvert) {
+    suivantOuverte();
+    return;
+  }
   if (reponses[currentQ] === undefined) return;
   if (currentQ < QUESTIONS.length - 1) {
     currentQ++;
     afficherQuestion();
   } else {
-    calculerProfil();
+    // Passer aux questions ouvertes
+    calculerProfilIntermediaire();
+    modeOuvert = true;
+    currentQO = 0;
+    afficherQuestionOuverte();
+    showScreen('screen-question');
   }
 }
 
 function precedent() {
-  if (currentQ > 0) {
+  if (modeOuvert) {
+    precedentOuverte();
+  } else if (currentQ > 0) {
     currentQ--;
     afficherQuestion();
   }
 }
 
-// ========== CALCUL PROFIL ==========
-function calculerProfil() {
+// ========== QUESTIONS OUVERTES ==========
+function afficherQuestionOuverte() {
+  const qo = QUESTIONS_OUVERTES[currentQO];
+  const totalFerme = QUESTIONS.length;
+  const totalOuvert = QUESTIONS_OUVERTES.length;
+  const totalGlobal = totalFerme + totalOuvert;
+  const position = totalFerme + currentQO + 1;
+
+  document.getElementById('q-number').textContent = `Question ${position}`;
+  document.getElementById('progress-label').textContent = `Question ${position} / ${totalGlobal}`;
+  const pct = Math.round(((position - 1) / totalGlobal) * 100);
+  document.getElementById('progress-pct').textContent = pct + '%';
+  document.getElementById('progress-fill').style.width = pct + '%';
+
+  // Afficher la question ouverte
+  document.getElementById('q-text').innerHTML = `${qo.emoji} ${qo.texte}`;
+  document.getElementById('btn-prev').style.display = 'block';
+
+  const container = document.getElementById('options-container');
+  const valeurActuelle = reponsesOuvertes[qo.id] || '';
+  container.innerHTML = `
+    <div class="question-ouverte" style="width:100%;max-width:480px;">
+      <textarea
+        id="textarea-ouverte"
+        placeholder="${qo.placeholder}"
+        maxlength="400"
+        oninput="majCharCount(this)"
+      >${valeurActuelle}</textarea>
+      <div class="char-count" id="char-count">${valeurActuelle.length}/400</div>
+    </div>
+  `;
+
+  // Bouton suivant toujours actif (réponse optionnelle)
+  const btnNext = document.getElementById('btn-next');
+  btnNext.style.opacity = '1';
+  btnNext.style.pointerEvents = 'auto';
+  const estDerniere = currentQO >= totalOuvert - 1;
+  btnNext.textContent = estDerniere ? 'Voir mon profil 🌺' : 'Suivant →';
+}
+
+function majCharCount(el) {
+  const count = document.getElementById('char-count');
+  if (count) count.textContent = el.value.length + '/400';
+}
+
+function sauvegarderReponseOuverte() {
+  const ta = document.getElementById('textarea-ouverte');
+  if (ta) {
+    const qo = QUESTIONS_OUVERTES[currentQO];
+    reponsesOuvertes[qo.id] = ta.value.trim();
+  }
+}
+
+function suivantOuverte() {
+  sauvegarderReponseOuverte();
+  if (currentQO < QUESTIONS_OUVERTES.length - 1) {
+    currentQO++;
+    afficherQuestionOuverte();
+  } else {
+    calculerProfil();
+  }
+}
+
+function precedentOuverte() {
+  sauvegarderReponseOuverte();
+  if (currentQO > 0) {
+    currentQO--;
+    afficherQuestionOuverte();
+  } else {
+    // Retour aux questions fermées
+    modeOuvert = false;
+    currentQ = QUESTIONS.length - 1;
+    afficherQuestion();
+  }
+}
+
+// ========== CALCUL PROFIL (intermédiaire, sans sauvegarder) ==========
+let _profilCalcule = null;
+let _scoresCalcules = null;
+
+function calculerProfilIntermediaire() {
   const scores = { eveille: 0, voix: 0, passeur: 0, createur: 0 };
   reponses.forEach((rep, qi) => {
     const profil = QUESTIONS[qi].options[rep].profil;
     scores[profil]++;
   });
-
-  const profil = Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0];
+  _profilCalcule = Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0];
+  _scoresCalcules = scores;
+}
+function calculerProfil() {
+  if (!_profilCalcule) calculerProfilIntermediaire();
+  const profil = _profilCalcule;
+  const scores = _scoresCalcules;
   const p = PROFILS[profil];
 
   document.getElementById('res-emoji').textContent = p.emoji;
@@ -936,14 +1110,19 @@ function calculerProfil() {
   document.getElementById('res-force').textContent = p.force;
   document.getElementById('res-etape').textContent = p.etape;
 
-  // Sauvegarder dans Firebase
+  // Sauvegarder dans Firebase avec verbatims
   const entry = {
     prenom,
     age,
     profil,
     scores,
     timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-    date: new Date().toLocaleDateString('fr-FR')
+    date: new Date().toLocaleDateString('fr-FR'),
+    verbatims: {
+      moi_avant: reponsesOuvertes.moi_avant || '',
+      ne_pas_oublier: reponsesOuvertes.ne_pas_oublier || '',
+      plus_transforme: reponsesOuvertes.plus_transforme || ''
+    }
   };
 
   attendreFirebase(() => {
@@ -990,9 +1169,16 @@ function afficherDashboard() {
   list.innerHTML = '';
   [...liste].reverse().forEach(r => {
     const p = PROFILS[r.profil] || { emoji: '?', nom: r.profil };
+    const v = r.verbatims || {};
     const div = document.createElement('div');
     div.className = 'jeune-card';
-    div.innerHTML = `
+    div.style.flexDirection = 'column';
+    div.style.alignItems = 'stretch';
+
+    // Header carte
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;';
+    header.innerHTML = `
       <div class="jeune-info">
         <div class="jeune-nom">${r.prenom}</div>
         <div class="jeune-age">${r.age} ans · ${r.timestamp}</div>
@@ -1002,6 +1188,23 @@ function afficherDashboard() {
         <span class="jeune-profil-nom">${p.nom}</span>
       </div>
     `;
+    div.appendChild(header);
+
+    // Verbatims
+    const verbatimsAfficher = [
+      { key: 'moi_avant', label: '💌 À mon moi d\'avant' },
+      { key: 'ne_pas_oublier', label: '🌿 À ne pas oublier' },
+      { key: 'plus_transforme', label: '⚡ Ce qui m\'a transformé' }
+    ];
+    verbatimsAfficher.forEach(({ key, label }) => {
+      if (v[key] && v[key].trim()) {
+        const vDiv = document.createElement('div');
+        vDiv.className = 'jeune-verbatim';
+        vDiv.innerHTML = `<span class="verbatim-label">${label}</span>"${v[key]}"`;
+        div.appendChild(vDiv);
+      }
+    });
+
     list.appendChild(div);
   });
 }
