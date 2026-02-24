@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fonnkèr — Quiz de clôture</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<!-- Firebase SDK avec Authentication Google -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, push, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const ZEAM_UID = "3XwP4vczBcXXSbnBllCrEWVWsvF3";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBKODKYxBpIo5mzKDV8T-Twbh-Ukg85I5w",
+    authDomain: "fonnker-by-zeam.firebaseapp.com",
+    databaseURL: "https://fonnker-by-zeam-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "fonnker-by-zeam",
+    storageBucket: "fonnker-by-zeam.firebasestorage.app",
+    messagingSenderId: "1008381298439",
+    appId: "1:1008381298439:web:6349c4760da28a2be227a2"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const auth = getAuth(app);
+  const provider = new GoogleAuthProvider();
+
+  // ---- Exposition globale ----
+  window._fbReady = true;
+  window._zeamUID = ZEAM_UID;
+  window._authUser = null;
+
+  // ---- Connexion Google (réservée Zéam) ----
+  window._connexionGoogle = async function() {
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      if (user.uid !== ZEAM_UID) {
+        await signOut(auth);
+        window._authUser = null;
+        alert("❌ Ce compte Google n'est pas autorisé.");
+        return false;
+      }
+      window._authUser = user;
+      return true;
+    } catch (e) {
+      console.error('Erreur connexion Google:', e);
+      return false;
+    }
+  };
+
+  // ---- Déconnexion ----
+  window._deconnexion = async function() {
+    await signOut(auth);
+    window._authUser = null;
+  };
+
+  // ---- Surveiller état auth ----
+  onAuthStateChanged(auth, (user) => {
+    if (user && user.uid === ZEAM_UID) {
+      window._authUser = user;
+      // Mettre à jour le dashboard si ouvert
+      const dash = document.getElementById('screen-dashboard');
+      if (dash && dash.classList.contains('active')) {
+        if (typeof mettreAJourHeaderDash === 'function') mettreAJourHeaderDash();
+      }
+    } else {
+      window._authUser = null;
+    }
+  });
+
+  // ---- Écoute temps réel dashboard (réservée Zéam authentifiée) ----
+  window._startDashboardListener = function() {
+    if (!window._authUser || window._authUser.uid !== ZEAM_UID) {
+      console.warn('Accès refusé — non authentifié');
+      return;
+    }
+    const resultatsRef = ref(db, 'resultats');
+    onValue(resultatsRef, (snapshot) => {
+      const data = snapshot.val();
+      const liste = data ? Object.entries(data).map(([id, val]) => ({ id, ...val })) : [];
+      window._resultatsFirebase = liste;
+      if (typeof afficherDashboard === 'function') afficherDashboard();
+    });
+  };
+
+  // ---- Écriture ouverte aux jeunes (anonyme) ----
+  window._sauvegarderFirebase = function(entry) {
+    const resultatsRef = ref(db, 'resultats');
+    push(resultatsRef, entry).catch(e => console.error('Erreur écriture:', e));
+  };
+
+  // ---- Suppression réservée Zéam ----
+  window._resetFirebase = function() {
+    if (!window._authUser || window._authUser.uid !== ZEAM_UID) {
+      alert('⛔ Action réservée à Zéam.');
+      return;
+    }
+    const resultatsRef = ref(db, 'resultats');
+    remove(resultatsRef).catch(e => console.error('Erreur suppression:', e));
+  };
+
+  console.log('✅ Firebase Auth + DB connectés — fonnker-by-zeam');
+</script>
+<style>
+  :root {
+    --orange: #E07B39;
+    --orange-light: #F4A96A;
+    --brun: #7A4A1E;
+    --creme: #FDF6EC;
+    --creme-dark: #F0E4D0;
+    --noir: #1A1008;
+    --gris: #8A7A6A;
+    --vert: #4A7A5A;
+    --feu: #D94F2A;
+    --rose: #C4607A;
+    --eclair: #7A5AB0;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--noir);
+    color: var(--creme);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ========== FOND TEXTURE ========== */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: 
+      radial-gradient(ellipse at 20% 20%, rgba(224,123,57,0.12) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(122,74,30,0.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, rgba(26,16,8,1) 0%, #0D0804 100%);
+    z-index: -1;
+  }
+
+  /* ========== ÉCRANS ========== */
+  .screen {
+    display: none;
+    min-height: 100vh;
+    padding: 2rem 1.5rem;
+    animation: fadeIn 0.5s ease;
+  }
+  .screen.active { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ========== LOGO / TITRE ========== */
+  .logo {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.8rem;
+    color: var(--orange);
+    text-align: center;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .logo-sub {
+    font-size: 0.85rem;
+    color: var(--gris);
+    text-align: center;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-top: 0.4rem;
+  }
+  .divider {
+    width: 60px;
+    height: 2px;
+    background: var(--orange);
+    margin: 1.5rem auto;
+    border-radius: 2px;
+  }
+
+  /* ========== CARD ========== */
+  .card {
+    background: rgba(253,246,236,0.05);
+    border: 1px solid rgba(224,123,57,0.2);
+    border-radius: 20px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 480px;
+    backdrop-filter: blur(10px);
+  }
+
+  /* ========== INPUTS ========== */
+  .input-group { margin-bottom: 1.2rem; }
+  .input-group label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--orange-light);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+  .input-group input {
+    width: 100%;
+    background: rgba(253,246,236,0.08);
+    border: 1px solid rgba(224,123,57,0.3);
+    border-radius: 10px;
+    padding: 0.9rem 1.2rem;
+    color: var(--creme);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .input-group input:focus { border-color: var(--orange); }
+  .input-group input::placeholder { color: var(--gris); }
+
+  /* ========== BOUTONS ========== */
+  .btn {
+    background: var(--orange);
+    color: var(--noir);
+    border: none;
+    border-radius: 50px;
+    padding: 0.9rem 2.5rem;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+    margin-top: 0.5rem;
+  }
+  .btn:hover { background: var(--orange-light); transform: translateY(-2px); }
+  .btn:active { transform: translateY(0); }
+
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid rgba(224,123,57,0.4);
+    color: var(--orange);
+    border-radius: 50px;
+    padding: 0.7rem 2rem;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-ghost:hover { background: rgba(224,123,57,0.1); }
+
+  /* ========== PROGRESSION ========== */
+  .progress-wrap {
+    width: 100%;
+    max-width: 480px;
+    margin-bottom: 1.5rem;
+  }
+  .progress-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--gris);
+    margin-bottom: 0.5rem;
+  }
+  .progress-bar {
+    height: 3px;
+    background: rgba(253,246,236,0.1);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--orange);
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+
+  /* ========== QUESTION ========== */
+  .question-number {
+    font-size: 0.75rem;
+    color: var(--orange);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.8rem;
+  }
+  .question-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.4rem;
+    line-height: 1.5;
+    color: var(--creme);
+    margin-bottom: 1.8rem;
+    max-width: 480px;
+    text-align: center;
+  }
+
+  /* ========== OPTIONS ========== */
+  .options {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+  }
+  .option {
+    background: rgba(253,246,236,0.05);
+    border: 1px solid rgba(224,123,57,0.2);
+    border-radius: 14px;
+    padding: 1rem 1.3rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    text-align: left;
+  }
+  .option:hover {
+    background: rgba(224,123,57,0.1);
+    border-color: var(--orange);
+    transform: translateX(4px);
+  }
+  .option.selected {
+    background: rgba(224,123,57,0.2);
+    border-color: var(--orange);
+  }
+  .option-letter {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(224,123,57,0.2);
+    color: var(--orange);
+    font-size: 0.8rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .option.selected .option-letter {
+    background: var(--orange);
+    color: var(--noir);
+  }
+  .option-text {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: var(--creme);
+  }
+
+  /* ========== PROFIL RESULT ========== */
+  .profil-emoji {
+    font-size: 4rem;
+    margin-bottom: 0.5rem;
+    display: block;
+    text-align: center;
+  }
+  .profil-nom {
+    font-family: 'Playfair Display', serif;
+    font-size: 2rem;
+    color: var(--orange);
+    text-align: center;
+    margin-bottom: 0.5rem;
+  }
+  .profil-desc {
+    font-size: 0.95rem;
+    line-height: 1.7;
+    color: var(--creme-dark);
+    text-align: center;
+    margin-bottom: 1rem;
+  }
+  .profil-force {
+    background: rgba(224,123,57,0.1);
+    border: 1px solid rgba(224,123,57,0.3);
+    border-radius: 10px;
+    padding: 0.8rem 1rem;
+    font-size: 0.85rem;
+    color: var(--orange-light);
+    text-align: center;
+    margin-bottom: 0.6rem;
+  }
+  .profil-etape {
+    background: rgba(253,246,236,0.05);
+    border: 1px solid rgba(253,246,236,0.1);
+    border-radius: 10px;
+    padding: 0.8rem 1rem;
+    font-size: 0.85rem;
+    color: var(--gris);
+    text-align: center;
+  }
+
+  /* ========== DASHBOARD ========== */
+  #screen-dashboard {
+    background: var(--noir);
+    min-height: 100vh;
+    padding: 1.5rem;
+    display: none;
+    flex-direction: column;
+  }
+  #screen-dashboard.active { display: flex; }
+
+  .dash-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(224,123,57,0.2);
+  }
+  .dash-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.3rem;
+    color: var(--orange);
+  }
+  .dash-count {
+    background: rgba(224,123,57,0.15);
+    border: 1px solid var(--orange);
+    border-radius: 20px;
+    padding: 0.3rem 1rem;
+    font-size: 0.85rem;
+    color: var(--orange);
+  }
+
+  /* Stats profils */
+  .profil-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+    margin-bottom: 1.5rem;
+  }
+  .stat-card {
+    background: rgba(253,246,236,0.05);
+    border: 1px solid rgba(224,123,57,0.15);
+    border-radius: 14px;
+    padding: 1rem;
+    text-align: center;
+  }
+  .stat-emoji { font-size: 1.8rem; display: block; margin-bottom: 0.3rem; }
+  .stat-nom { font-size: 0.8rem; color: var(--orange-light); font-weight: 500; margin-bottom: 0.3rem; }
+  .stat-nb { font-family: 'Playfair Display', serif; font-size: 1.8rem; color: var(--creme); }
+
+  /* Liste jeunes */
+  .jeunes-list { display: flex; flex-direction: column; gap: 0.7rem; flex: 1; overflow-y: auto; }
+  .jeune-card {
+    background: rgba(253,246,236,0.04);
+    border: 1px solid rgba(224,123,57,0.15);
+    border-radius: 12px;
+    padding: 0.9rem 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    animation: fadeIn 0.4s ease;
+  }
+  .jeune-info { display: flex; flex-direction: column; gap: 0.2rem; }
+  .jeune-nom { font-size: 0.95rem; font-weight: 500; color: var(--creme); }
+  .jeune-age { font-size: 0.75rem; color: var(--gris); }
+  .jeune-profil {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(224,123,57,0.1);
+    border-radius: 20px;
+    padding: 0.3rem 0.8rem;
+  }
+  .jeune-profil-emoji { font-size: 1.1rem; }
+  .jeune-profil-nom { font-size: 0.8rem; color: var(--orange-light); }
+
+  .dash-empty {
+    text-align: center;
+    color: var(--gris);
+    font-style: italic;
+    padding: 2rem;
+    font-size: 0.9rem;
+  }
+
+  /* Bouton reset */
+  .btn-reset {
+    background: transparent;
+    border: 1px solid rgba(255,80,80,0.3);
+    color: rgba(255,80,80,0.6);
+    border-radius: 8px;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    margin-top: 1rem;
+    align-self: center;
+  }
+  .btn-reset:hover { border-color: rgba(255,80,80,0.6); color: rgba(255,80,80,0.9); }
+
+  /* Accès dashboard */
+  .dash-access {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 100;
+  }
+  .btn-dash {
+    background: rgba(26,16,8,0.9);
+    border: 1px solid var(--orange);
+    color: var(--orange);
+    border-radius: 50px;
+    padding: 0.6rem 1.2rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+  }
+
+  /* Note Firebase */
+  .firebase-note {
+    background: rgba(74,122,90,0.1);
+    border: 1px solid rgba(74,122,90,0.3);
+    border-radius: 10px;
+    padding: 0.8rem 1rem;
+    font-size: 0.8rem;
+    color: #8FBF9F;
+    text-align: center;
+    margin-top: 1rem;
+  }
+
+  /* Message intro */
+  .intro-text {
+    font-size: 0.95rem;
+    line-height: 1.7;
+    color: var(--creme-dark);
+    text-align: center;
+    margin-bottom: 1.5rem;
+  }
+
+  .nav-buttons {
+    display: flex;
+    gap: 0.8rem;
+    width: 100%;
+    max-width: 480px;
+    margin-top: 1.5rem;
+  }
+  .nav-buttons .btn { flex: 1; }
+
+  /* Password dash */
+  .pwd-wrap { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+  .pwd-wrap input {
+    flex: 1;
+    background: rgba(253,246,236,0.08);
+    border: 1px solid rgba(224,123,57,0.3);
+    border-radius: 10px;
+    padding: 0.6rem 1rem;
+    color: var(--creme);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    outline: none;
+  }
+  .pwd-wrap button {
+    background: var(--orange);
+    border: none;
+    border-radius: 10px;
+    padding: 0.6rem 1rem;
+    color: var(--noir);
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .pwd-error { color: #FF6B6B; font-size: 0.8rem; margin-top: 0.4rem; display: none; }
+</style>
+</head>
+<body>
+
+<!-- ========== ÉCRAN ACCUEIL ========== -->
+<div class="screen active" id="screen-accueil">
+  <div class="logo">Fonnkèr</div>
+  <div class="logo-sub">Quiz de clôture</div>
+  <div class="divider"></div>
+  <p class="intro-text" style="max-width:400px;">
+    Avant de commencer, dis-moi qui tu es.<br>
+    Tes réponses resteront entre nous. 🌺
+  </p>
+  <div class="card">
+    <div class="input-group">
+      <label>Ton prénom</label>
+      <input type="text" id="input-prenom" placeholder="Ex: Maëva" autocomplete="off" />
+    </div>
+    <div class="input-group">
+      <label>Ton âge</label>
+      <input type="number" id="input-age" placeholder="Ex: 17" min="10" max="99" />
+    </div>
+    <button class="btn" onclick="demarrer()">C'est parti 🌿</button>
+  </div>
+  <div style="margin-top:2rem;">
+    <p style="font-size:0.75rem;color:var(--gris);text-align:center;margin-bottom:0.8rem;">Médiateur·trice Zéam ?</p>
+    <button class="btn-ghost" style="max-width:300px;margin:0 auto;display:block;" onclick="accederDashboard()">
+      <span style="margin-right:0.5rem;">🔐</span> Connexion Google — Zéam
+    </button>
+    <p class="pwd-error" id="pwd-error">Compte non autorisé</p>
+  </div>
+</div>
+
+<!-- ========== ÉCRAN QUESTION ========== -->
+<div class="screen" id="screen-question">
+  <div class="progress-wrap">
+    <div class="progress-info">
+      <span id="progress-label">Question 1 / 8</span>
+      <span id="progress-pct">0%</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+  </div>
+
+  <p class="question-number" id="q-number">Question 1</p>
+  <p class="question-text" id="q-text">—</p>
+
+  <div class="options" id="options-container"></div>
+
+  <div class="nav-buttons">
+    <button class="btn-ghost" onclick="precedent()" id="btn-prev" style="display:none">← Retour</button>
+    <button class="btn" onclick="suivant()" id="btn-next" style="opacity:0.4;pointer-events:none;">Suivant →</button>
+  </div>
+</div>
+
+<!-- ========== ÉCRAN RÉSULTAT ========== -->
+<div class="screen" id="screen-resultat">
+  <div class="logo" style="font-size:1.8rem;margin-bottom:0.3rem;">Ton profil Fonnkèr</div>
+  <div class="divider"></div>
+  <div class="card" style="max-width:440px;">
+    <span class="profil-emoji" id="res-emoji">🌿</span>
+    <div class="profil-nom" id="res-nom">—</div>
+    <p class="profil-desc" id="res-desc">—</p>
+    <div class="profil-force" id="res-force">—</div>
+    <div class="profil-etape" id="res-etape">—</div>
+  </div>
+  <div style="margin-top:1.5rem;text-align:center;">
+    <p style="font-size:0.85rem;color:var(--gris);margin-bottom:1rem;">Merci d'avoir participé 🌺</p>
+    <button class="btn-ghost" onclick="recommencer()">Recommencer</button>
+  </div>
+</div>
+
+<!-- ========== DASHBOARD MÉDIATEUR ========== -->
+<div class="screen" id="screen-dashboard">
+  <div class="dash-header">
+    <div class="dash-title">🌺 Tableau de bord</div>
+    <div style="display:flex;align-items:center;gap:0.8rem;">
+      <div class="dash-count" id="dash-count">0 jeunes</div>
+      <button class="btn-ghost" style="padding:0.3rem 0.8rem;font-size:0.75rem;" onclick="deconnecterDash()" id="btn-deconnexion" title="Se déconnecter">⏏</button>
+    </div>
+  </div>
+  <div id="dash-user-info" style="font-size:0.75rem;color:var(--gris);text-align:right;margin-bottom:1rem;margin-top:-0.5rem;"></div>
+
+  <div class="profil-stats" id="profil-stats">
+    <div class="stat-card">
+      <span class="stat-emoji">🌿</span>
+      <div class="stat-nom">L'Éveillé·e</div>
+      <div class="stat-nb" id="stat-eveille">0</div>
+    </div>
+    <div class="stat-card">
+      <span class="stat-emoji">🔥</span>
+      <div class="stat-nom">La Voix</div>
+      <div class="stat-nb" id="stat-voix">0</div>
+    </div>
+    <div class="stat-card">
+      <span class="stat-emoji">🌺</span>
+      <div class="stat-nom">Le Passeur·se</div>
+      <div class="stat-nb" id="stat-passeur">0</div>
+    </div>
+    <div class="stat-card">
+      <span class="stat-emoji">⚡</span>
+      <div class="stat-nom">Le Créateur·trice</div>
+      <div class="stat-nb" id="stat-createur">0</div>
+    </div>
+  </div>
+
+  <div class="jeunes-list" id="jeunes-list">
+    <div class="dash-empty">En attente des premières réponses...</div>
+  </div>
+
+  <div class="firebase-note" id="firebase-status">
+    🔄 Connexion Firebase en cours...
+  </div>
+
+  <button class="btn-reset" onclick="resetData()">🗑 Effacer toutes les données</button>
+  <button class="btn-ghost" style="margin-top:0.8rem;align-self:center;" onclick="retourAccueil()">← Retour quiz</button>
+</div>
+
+<script>
+// ========== DONNÉES ==========
+
+const QUESTIONS = [
+  {
+    texte: "Avant cet atelier, ta voix c'était...",
+    options: [
+      { texte: "Quelque chose de flou que je ne comprenais pas moi-même", profil: "eveille" },
+      { texte: "Quelque chose de fort mais sans sortie", profil: "voix" },
+      { texte: "Quelque chose que je gardais pour moi pour ne pas déranger", profil: "passeur" },
+      { texte: "Quelque chose que je ne pensais pas avoir", profil: "createur" }
+    ]
+  },
+  {
+    texte: "Ce qui a le plus bougé en toi pendant l'atelier...",
+    options: [
+      { texte: "Je commence à me voir différemment", profil: "eveille" },
+      { texte: "Je commence à croire que mes mots ont du poids", profil: "voix" },
+      { texte: "Je me sens moins seul·e dans ma tête", profil: "passeur" },
+      { texte: "J'ai découvert que je pouvais créer quelque chose", profil: "createur" }
+    ]
+  },
+  {
+    texte: "Quand tu écris maintenant, tu te sens...",
+    options: [
+      { texte: "Quelqu'un qui s'observe avec douceur", profil: "eveille" },
+      { texte: "Quelqu'un qui a enfin une sortie", profil: "voix" },
+      { texte: "Quelqu'un qui rejoint les autres", profil: "passeur" },
+      { texte: "Quelqu'un qui invente quelque chose de nouveau", profil: "createur" }
+    ]
+  },
+  {
+    texte: "La phrase qui te ressemble le plus aujourd'hui...",
+    options: [
+      { texte: "Je commence à nommer ce que je ressens", profil: "eveille" },
+      { texte: "Ma parole mérite d'être entendue", profil: "voix" },
+      { texte: "Je ne suis pas le·la seul·e à vivre ça", profil: "passeur" },
+      { texte: "J'ai quelque chose à offrir que je ne soupçonnais pas", profil: "createur" }
+    ]
+  },
+  {
+    texte: "Ta prochaine étape naturelle, tu la vois comment ?",
+    options: [
+      { texte: "Écrire pour moi, explorer mon intérieur", profil: "eveille" },
+      { texte: "Oser prendre la parole devant les autres", profil: "voix" },
+      { texte: "Créer quelque chose avec d'autres", profil: "passeur" },
+      { texte: "Lancer un projet qui me tient vraiment à cœur", profil: "createur" }
+    ]
+  },
+  {
+    texte: "Ce que tu emportes de cet atelier...",
+    options: [
+      { texte: "Une façon de me regarder avec moins de dureté", profil: "eveille" },
+      { texte: "La certitude que j'ai quelque chose à dire", profil: "voix" },
+      { texte: "Le sentiment de ne plus être seul·e", profil: "passeur" },
+      { texte: "Une étincelle que je n'avais pas avant", profil: "createur" }
+    ]
+  },
+  {
+    texte: "Si quelqu'un te demande ce que Fonnkèr t'a apporté, tu dis...",
+    options: [
+      { texte: "J'ai appris à m'écouter", profil: "eveille" },
+      { texte: "J'ai trouvé ma voix", profil: "voix" },
+      { texte: "J'ai trouvé les autres", profil: "passeur" },
+      { texte: "J'ai trouvé ce que je pouvais créer", profil: "createur" }
+    ]
+  },
+  {
+    texte: "L'image qui décrit le mieux ton chemin dans cet atelier...",
+    options: [
+      { texte: "Une lumière qui s'allume doucement dans une pièce sombre", profil: "eveille" },
+      { texte: "Un feu qu'on avait étouffé et qui reprend", profil: "voix" },
+      { texte: "Un fil qui relie des gens qui se croyaient seuls", profil: "passeur" },
+      { texte: "Une graine qui explose et surprend tout le monde", profil: "createur" }
+    ]
+  }
+];
+
+const PROFILS = {
+  eveille: {
+    emoji: "🌿",
+    nom: "L'Éveillé·e",
+    desc: "Tu commences à te voir. Avant l'atelier, tu fermais parfois les yeux sur ce que tu ressentais. Ce qui a bougé en toi, c'est la conscience de soi — tu commences à nommer tes émotions, à t'observer avec un peu plus de douceur.",
+    force: "✨ Ta force : l'introspection",
+    etape: "→ Ta prochaine étape naturelle : l'écriture pour toi-même"
+  },
+  voix: {
+    emoji: "🔥",
+    nom: "La Voix",
+    desc: "Tu avais des choses à dire mais tu ne savais pas comment. L'atelier a déverrouillé quelque chose : tu commences à croire que tes mots ont du poids, que ta parole mérite d'être entendue.",
+    force: "✨ Ta force : l'expression",
+    etape: "→ Ta prochaine étape naturelle : oser prendre la parole en public ou dans un collectif"
+  },
+  passeur: {
+    emoji: "🌺",
+    nom: "Le Passeur·se",
+    desc: "Tu te sentais parfois seul·e dans ta tête. Ce qui a changé en toi, c'est le lien — tu découvres que tu n'es pas le·la seul·e à vivre ce que tu vis, et que tu peux te connecter aux autres autrement.",
+    force: "✨ Ta force : la relation et l'empathie",
+    etape: "→ Ta prochaine étape naturelle : co-créer quelque chose avec d'autres"
+  },
+  createur: {
+    emoji: "⚡",
+    nom: "Le Créateur·trice",
+    desc: "Tu ne croyais pas avoir grand chose à offrir. L'atelier a réveillé une puissance créatrice que tu ne soupçonnais pas. Tu as quelque chose à inventer, à lancer, à partager.",
+    force: "✨ Ta force : l'invention et l'initiative",
+    etape: "→ Ta prochaine étape naturelle : poursuivre un projet qui te tient vraiment à cœur"
+  }
+};
+
+// ========== STATE ==========
+let currentQ = 0;
+let reponses = [];
+let prenom = "";
+let age = "";
+let resultatsFirebase = [];
+let dashboardListenerActif = false;
+
+// ========== ATTENTE FIREBASE ==========
+function attendreFirebase(callback) {
+  if (window._fbReady) { callback(); return; }
+  const interval = setInterval(() => {
+    if (window._fbReady) { clearInterval(interval); callback(); }
+  }, 100);
+}
+
+// ========== NAVIGATION ==========
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function demarrer() {
+  prenom = document.getElementById('input-prenom').value.trim();
+  age = document.getElementById('input-age').value.trim();
+  if (!prenom) { document.getElementById('input-prenom').focus(); return; }
+  if (!age) { document.getElementById('input-age').focus(); return; }
+  currentQ = 0;
+  reponses = [];
+  afficherQuestion();
+  showScreen('screen-question');
+}
+
+function accederDashboard() {
+  document.getElementById('pwd-error').style.display = 'none';
+  attendreFirebase(async () => {
+    const ok = await window._connexionGoogle();
+    if (ok) {
+      if (!dashboardListenerActif) {
+        window._startDashboardListener();
+        dashboardListenerActif = true;
+      }
+      mettreAJourHeaderDash();
+      afficherDashboard();
+      showScreen('screen-dashboard');
+    } else {
+      document.getElementById('pwd-error').style.display = 'block';
+    }
+  });
+}
+
+function mettreAJourHeaderDash() {
+  const user = window._authUser;
+  const el = document.getElementById('dash-user-info');
+  if (el && user) {
+    el.textContent = `🔐 Connectée : ${user.email}`;
+  }
+}
+
+async function deconnecterDash() {
+  await window._deconnexion();
+  dashboardListenerActif = false;
+  retourAccueil();
+}
+
+function retourAccueil() {
+  showScreen('screen-accueil');
+}
+
+function recommencer() {
+  document.getElementById('input-prenom').value = '';
+  document.getElementById('input-age').value = '';
+  showScreen('screen-accueil');
+}
+
+// ========== QUIZ ==========
+function afficherQuestion() {
+  const q = QUESTIONS[currentQ];
+  const total = QUESTIONS.length;
+
+  document.getElementById('q-number').textContent = `Question ${currentQ + 1}`;
+  document.getElementById('q-text').textContent = q.texte;
+  document.getElementById('progress-label').textContent = `Question ${currentQ + 1} / ${total}`;
+  const pct = Math.round((currentQ / total) * 100);
+  document.getElementById('progress-pct').textContent = pct + '%';
+  document.getElementById('progress-fill').style.width = pct + '%';
+
+  document.getElementById('btn-prev').style.display = currentQ > 0 ? 'block' : 'none';
+
+  const container = document.getElementById('options-container');
+  container.innerHTML = '';
+  const lettres = ['A', 'B', 'C', 'D'];
+
+  q.options.forEach((opt, i) => {
+    const div = document.createElement('div');
+    div.className = 'option' + (reponses[currentQ] === i ? ' selected' : '');
+    div.innerHTML = `
+      <div class="option-letter">${lettres[i]}</div>
+      <div class="option-text">${opt.texte}</div>
+    `;
+    div.onclick = () => selectionner(i);
+    container.appendChild(div);
+  });
+
+  const btnNext = document.getElementById('btn-next');
+  if (reponses[currentQ] !== undefined) {
+    btnNext.style.opacity = '1';
+    btnNext.style.pointerEvents = 'auto';
+    btnNext.textContent = currentQ < total - 1 ? 'Suivant →' : 'Voir mon profil 🌺';
+  } else {
+    btnNext.style.opacity = '0.4';
+    btnNext.style.pointerEvents = 'none';
+  }
+}
+
+function selectionner(index) {
+  reponses[currentQ] = index;
+  afficherQuestion();
+}
+
+function suivant() {
+  if (reponses[currentQ] === undefined) return;
+  if (currentQ < QUESTIONS.length - 1) {
+    currentQ++;
+    afficherQuestion();
+  } else {
+    calculerProfil();
+  }
+}
+
+function precedent() {
+  if (currentQ > 0) {
+    currentQ--;
+    afficherQuestion();
+  }
+}
+
+// ========== CALCUL PROFIL ==========
+function calculerProfil() {
+  const scores = { eveille: 0, voix: 0, passeur: 0, createur: 0 };
+  reponses.forEach((rep, qi) => {
+    const profil = QUESTIONS[qi].options[rep].profil;
+    scores[profil]++;
+  });
+
+  const profil = Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0];
+  const p = PROFILS[profil];
+
+  document.getElementById('res-emoji').textContent = p.emoji;
+  document.getElementById('res-nom').textContent = p.nom;
+  document.getElementById('res-desc').textContent = p.desc;
+  document.getElementById('res-force').textContent = p.force;
+  document.getElementById('res-etape').textContent = p.etape;
+
+  // Sauvegarder dans Firebase
+  const entry = {
+    prenom,
+    age,
+    profil,
+    scores,
+    timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+    date: new Date().toLocaleDateString('fr-FR')
+  };
+
+  attendreFirebase(() => {
+    window._sauvegarderFirebase(entry);
+  });
+
+  showScreen('screen-resultat');
+}
+
+// ========== DASHBOARD ==========
+function afficherDashboard() {
+  // Utilise les données Firebase temps réel si disponibles
+  const liste = window._resultatsFirebase || [];
+
+  // Mise à jour statut Firebase
+  const statusEl = document.getElementById('firebase-status');
+  const user = window._authUser;
+  if (window._fbReady && user) {
+    statusEl.innerHTML = `🟢 Firebase sécurisé · connectée en tant que ${user.email}`;
+    statusEl.style.color = '#8FBF9F';
+    statusEl.style.borderColor = 'rgba(74,122,90,0.3)';
+  } else {
+    statusEl.innerHTML = '🔄 Connexion Firebase en cours...';
+  }
+
+  // Count
+  document.getElementById('dash-count').textContent = `${liste.length} jeune${liste.length > 1 ? 's' : ''}`;
+
+  // Stats profils
+  const counts = { eveille: 0, voix: 0, passeur: 0, createur: 0 };
+  liste.forEach(r => { if (counts[r.profil] !== undefined) counts[r.profil]++; });
+  document.getElementById('stat-eveille').textContent = counts.eveille;
+  document.getElementById('stat-voix').textContent = counts.voix;
+  document.getElementById('stat-passeur').textContent = counts.passeur;
+  document.getElementById('stat-createur').textContent = counts.createur;
+
+  // Liste jeunes
+  const list = document.getElementById('jeunes-list');
+  if (liste.length === 0) {
+    list.innerHTML = '<div class="dash-empty">En attente des premières réponses... 🌺</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  [...liste].reverse().forEach(r => {
+    const p = PROFILS[r.profil] || { emoji: '?', nom: r.profil };
+    const div = document.createElement('div');
+    div.className = 'jeune-card';
+    div.innerHTML = `
+      <div class="jeune-info">
+        <div class="jeune-nom">${r.prenom}</div>
+        <div class="jeune-age">${r.age} ans · ${r.timestamp}</div>
+      </div>
+      <div class="jeune-profil">
+        <span class="jeune-profil-emoji">${p.emoji}</span>
+        <span class="jeune-profil-nom">${p.nom}</span>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function resetData() {
+  if (confirm('Effacer toutes les données de cet atelier dans Firebase ?')) {
+    attendreFirebase(() => {
+      window._resetFirebase();
+      window._resultatsFirebase = [];
+      afficherDashboard();
+    });
+  }
+}
+
+// Mise à jour statut Firebase au chargement
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    if (window._fbReady) {
+      console.log('✅ Firebase prêt');
+    }
+  }, 2000);
+});
+</script>
+</body>
+</html>
